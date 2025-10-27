@@ -212,8 +212,9 @@ function restaurarTudo() {
   const mes = localStorage.getItem("mesSelecionado");
   if (mes) {
     inputMes.value = mes;
-    restaurarEstrutura();
-    gerarTabela(mes);
+    gerarTabela(mes);       // Gera a tabela primeiro
+    restaurarEstrutura();   // Depois restaura as colunas extras
+    restaurarDados();       // E finalmente preenche as células com os dados salvos
   }
 }
 
