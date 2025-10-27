@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tabela de Dados por Data</title>
+<title>Gerenciamento de Dados por Data</title>
 
 <!-- jsPDF + html2canvas -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -13,18 +13,39 @@
   body {
     font-family: Arial, sans-serif;
     margin: 30px;
+    background: #fafafa;
   }
   h1 {
     text-align: center;
+    margin-bottom: 20px;
   }
   .controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
     margin-bottom: 20px;
-    text-align: center;
+  }
+  button {
+    padding: 8px 14px;
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    background: #007bff;
+    color: white;
+    transition: 0.2s;
+  }
+  button:hover {
+    background: #0056b3;
+  }
+  input[type="month"] {
+    padding: 6px;
+    font-size: 14px;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 10px;
+    background: white;
   }
   th, td {
     border: 1px solid #ccc;
@@ -35,13 +56,9 @@
   th {
     background-color: #f0f0f0;
   }
-  button {
-    margin: 5px;
-    padding: 8px 12px;
-    cursor: pointer;
-  }
-  .data-cell {
-    cursor: pointer;
+  td[contenteditable="true"] {
+    background: #fdfdfd;
+    outline: none;
   }
   tfoot td {
     font-weight: bold;
@@ -56,11 +73,12 @@
 <div class="controls">
   <label for="mes">Selecione o mês:</label>
   <input type="month" id="mes">
-  <button id="gerar">Gerar Tabela</button>
+  <button id="gerar">📅 Gerar Tabela</button>
   <button id="inserirColuna">➕ Inserir Coluna</button>
   <button id="inserirColunaMoeda">💰 Inserir Coluna Moeda</button>
   <button id="excluirColuna">➖ Excluir Coluna</button>
   <button id="salvarPDF">🧾 Salvar em PDF</button>
+  <button id="limparDados" style="background:#dc3545;">🗑️ Limpar Dados</button>
 </div>
 
 <table id="tabela">
@@ -71,68 +89,55 @@
     </tr>
   </thead>
   <tbody></tbody>
-  <tfoot>
-    <tr></tr>
-  </tfoot>
+  <tfoot><tr></tr></tfoot>
 </table>
 
 <script>
 const tabela = document.querySelector("#tabela tbody");
 const tfoot = document.querySelector("#tabela tfoot tr");
-const gerarBtn = document.getElementById("gerar");
+const thead = document.querySelector("#tabela thead tr");
 const inputMes = document.getElementById("mes");
+
+// Botões
+const gerarBtn = document.getElementById("gerar");
 const inserirColunaBtn = document.getElementById("inserirColuna");
 const inserirColunaMoedaBtn = document.getElementById("inserirColunaMoeda");
 const excluirColunaBtn = document.getElementById("excluirColuna");
 const salvarPDFBtn = document.getElementById("salvarPDF");
-const thead = document.querySelector("#tabela thead tr");
+const limparDadosBtn = document.getElementById("limparDados");
 
-// ======= GERA TABELA =======
+// ========== GERA TABELA ==========
 function gerarTabela(mes) {
   tabela.innerHTML = "";
   const [ano, mesNum] = mes.split("-");
   const ultimoDia = new Date(ano, mesNum, 0).getDate();
-
-  const numColunasExtras = thead.querySelectorAll("th").length - 2;
+  const numExtras = thead.querySelectorAll("th").length - 2;
 
   for (let dia = 1; dia <= ultimoDia; dia++) {
     const data = new Date(ano, mesNum - 1, dia);
     const diaSemana = data.toLocaleDateString("pt-BR", { weekday: "long" });
-    
+
     const tr = document.createElement("tr");
-    let linha = `
+    tr.innerHTML = `
       <td>${data.toLocaleDateString("pt-BR")}</td>
       <td>${diaSemana}</td>
     `;
-
-    for (let i = 0; i < numColunasExtras; i++) {
+    for (let i = 0; i < numExtras; i++) {
       const th = thead.querySelectorAll("th")[i + 2];
       const isMoeda = th.classList.contains("coluna-moeda");
-      linha += `<td class="data-cell ${isMoeda ? 'moeda' : ''}" contenteditable="true"></td>`;
+      const td = document.createElement("td");
+      td.contentEditable = "true";
+      td.classList.add("data-cell");
+      if (isMoeda) td.classList.add("moeda");
+      tr.appendChild(td);
     }
-
-    tr.innerHTML = linha;
     tabela.appendChild(tr);
   }
-
   atualizarRodape();
-  restaurarDados();
 }
 
-// ======= GERENCIAMENTO DE COLUNAS =======
-inserirColunaBtn.addEventListener("click", () => {
-  const nomeColuna = prompt("Digite o nome da nova coluna:");
-  if (!nomeColuna) return;
-  adicionarColuna(nomeColuna, false);
-});
-
-inserirColunaMoedaBtn.addEventListener("click", () => {
-  const nomeColuna = prompt("Digite o nome da nova coluna de moeda:");
-  if (!nomeColuna) return;
-  adicionarColuna(nomeColuna, true);
-});
-
-function adicionarColuna(nome, isMoeda) {
+// ========== COLUNAS ==========
+function adicionarColuna(nome, isMoeda = false) {
   const th = document.createElement("th");
   th.textContent = nome;
   if (isMoeda) th.classList.add("coluna-moeda");
@@ -140,13 +145,12 @@ function adicionarColuna(nome, isMoeda) {
 
   tabela.querySelectorAll("tr").forEach(tr => {
     const td = document.createElement("td");
+    td.contentEditable = "true";
     td.classList.add("data-cell");
     if (isMoeda) td.classList.add("moeda");
-    td.contentEditable = "true";
     tr.appendChild(td);
   });
 
-  // Rodapé (tfoot)
   const tdFoot = document.createElement("td");
   tdFoot.textContent = isMoeda ? "R$ 0,00" : "";
   tfoot.appendChild(tdFoot);
@@ -155,23 +159,28 @@ function adicionarColuna(nome, isMoeda) {
   salvarDados();
 }
 
-excluirColunaBtn.addEventListener("click", () => {
+inserirColunaBtn.onclick = () => {
+  const nome = prompt("Nome da nova coluna:");
+  if (nome) adicionarColuna(nome, false);
+};
+
+inserirColunaMoedaBtn.onclick = () => {
+  const nome = prompt("Nome da nova coluna de moeda:");
+  if (nome) adicionarColuna(nome, true);
+};
+
+excluirColunaBtn.onclick = () => {
   const ths = thead.querySelectorAll("th");
-  if (ths.length <= 2) {
-    alert("Não há colunas adicionais para excluir!");
-    return;
-  }
-
-  const ultimaIndex = ths.length - 1;
-  ths[ultimaIndex].remove();
-  tabela.querySelectorAll("tr").forEach(tr => tr.children[ultimaIndex].remove());
-  tfoot.children[ultimaIndex].remove();
-
+  if (ths.length <= 2) return alert("Não há colunas adicionais para excluir!");
+  const idx = ths.length - 1;
+  ths[idx].remove();
+  tabela.querySelectorAll("tr").forEach(tr => tr.children[idx].remove());
+  if (tfoot.children[idx]) tfoot.children[idx].remove();
   salvarEstrutura();
   salvarDados();
-});
+};
 
-// ======= SALVAR / RESTAURAR =======
+// ========== SALVAR / RESTAURAR ==========
 function salvarEstrutura() {
   const colunas = Array.from(thead.querySelectorAll("th"))
     .slice(2)
@@ -199,8 +208,8 @@ function restaurarDados() {
   const dados = JSON.parse(localStorage.getItem("dadosTabela")) || [];
   const linhas = tabela.querySelectorAll("tr");
   dados.forEach((linha, i) => {
-    if (!linhas[i]) return;
-    const celulas = linhas[i].querySelectorAll(".data-cell");
+    const celulas = linhas[i]?.querySelectorAll(".data-cell");
+    if (!celulas) return;
     linha.forEach((valor, j) => {
       if (celulas[j]) celulas[j].textContent = valor;
     });
@@ -212,13 +221,13 @@ function restaurarTudo() {
   const mes = localStorage.getItem("mesSelecionado");
   if (mes) {
     inputMes.value = mes;
-    gerarTabela(mes);       // Gera a tabela primeiro
-    restaurarEstrutura();   // Depois restaura as colunas extras
-    restaurarDados();       // E finalmente preenche as células com os dados salvos
+    gerarTabela(mes);
+    restaurarEstrutura();
+    restaurarDados();
   }
 }
 
-// ======= FORMATAR MOEDA =======
+// ========== MOEDAS ==========
 tabela.addEventListener("input", e => {
   if (e.target.classList.contains("moeda")) {
     let valor = e.target.textContent.replace(/\D/g, "");
@@ -228,26 +237,20 @@ tabela.addEventListener("input", e => {
       valor = (parseFloat(valor) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       e.target.textContent = valor;
     }
-    salvarDados();
-  } else {
-    salvarDados();
   }
+  salvarDados();
 });
 
-// ======= ATUALIZA TOTAL =======
+// ========== SOMATÓRIO ==========
 function atualizarRodape() {
   const colunas = thead.querySelectorAll("th");
   while (tfoot.children.length < colunas.length) {
-    const td = document.createElement("td");
-    tfoot.appendChild(td);
+    tfoot.appendChild(document.createElement("td"));
   }
-
-  for (let i = 0; i < colunas.length; i++) {
+  for (let i = 2; i < colunas.length; i++) {
     const th = colunas[i];
-    const td = tfoot.children[i] || document.createElement("td");
-    if (i < 2) {
-      td.textContent = ""; // não mostra nada nas duas primeiras colunas
-    } else if (th.classList.contains("coluna-moeda")) {
+    const td = tfoot.children[i];
+    if (th.classList.contains("coluna-moeda")) {
       let soma = 0;
       tabela.querySelectorAll("tr").forEach(tr => {
         const texto = tr.children[i].textContent.replace(/[R$\s.]/g, "").replace(",", ".");
@@ -258,56 +261,51 @@ function atualizarRodape() {
     } else {
       td.textContent = "";
     }
-    if (!tfoot.children[i]) tfoot.appendChild(td);
   }
 }
 
-// ======= PDF COM MARGENS AJUSTADAS =======
-salvarPDFBtn.addEventListener("click", async () => {
+// ========== PDF ==========
+salvarPDFBtn.onclick = async () => {
   const { jsPDF } = window.jspdf;
-  const tabelaClone = document.getElementById("tabela").cloneNode(true);
-
+  const clone = document.getElementById("tabela").cloneNode(true);
   const temp = document.createElement("div");
   temp.style.position = "fixed";
   temp.style.left = "-9999px";
-  temp.appendChild(tabelaClone);
+  temp.appendChild(clone);
   document.body.appendChild(temp);
-
-  const canvas = await html2canvas(tabelaClone, { scale: 2 });
-  const imgData = canvas.toDataURL("image/png");
+  const canvas = await html2canvas(clone, { scale: 2 });
   document.body.removeChild(temp);
+  const imgData = canvas.toDataURL("image/png");
 
   const pdf = new jsPDF("portrait", "pt", "a4");
-  const margemEsq = 40, margemDir = 40, margemTopo = 56, margemBaixo = 56;
-
-  const pageWidth = pdf.internal.pageSize.getWidth() - margemEsq - margemDir;
-  const pageHeight = pdf.internal.pageSize.getHeight() - margemTopo - margemBaixo;
-
+  const pageWidth = pdf.internal.pageSize.getWidth() - 80;
+  const pageHeight = pdf.internal.pageSize.getHeight() - 100;
   const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
-  const finalWidth = canvas.width * scale;
-  const finalHeight = canvas.height * scale;
-
-  const x = margemEsq + (pageWidth - finalWidth) / 2;
-  const y = margemTopo;
-
+  const x = 40, y = 60;
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(14);
-  pdf.text("Relatório de Dados por Data", pdf.internal.pageSize.getWidth() / 2, 35, { align: "center" });
-  pdf.addImage(imgData, "PNG", x, y, finalWidth, finalHeight);
+  pdf.text("Relatório de Dados por Data", pdf.internal.pageSize.getWidth() / 2, 40, { align: "center" });
+  pdf.addImage(imgData, "PNG", x, y, canvas.width * scale, canvas.height * scale);
   pdf.save("tabela_dados.pdf");
-});
+};
 
-// ======= EVENTOS =======
-gerarBtn.addEventListener("click", () => {
-  if (!inputMes.value) {
-    alert("Selecione um mês!");
-    return;
+// ========== LIMPAR DADOS ==========
+limparDadosBtn.onclick = () => {
+  if (confirm("Deseja realmente apagar todos os dados salvos?")) {
+    localStorage.clear();
+    location.reload();
   }
+};
+
+// ========== EVENTOS ==========
+gerarBtn.onclick = () => {
+  if (!inputMes.value) return alert("Selecione um mês!");
   gerarTabela(inputMes.value);
   salvarEstrutura();
   salvarDados();
-});
+};
 
+// Ao carregar a página
 restaurarTudo();
 </script>
 
