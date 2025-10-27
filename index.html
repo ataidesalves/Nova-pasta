@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabela de Dados por Data</title>
+
+<!-- jsPDF + html2canvas -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 30px;
+  }
+  h1 {
+    text-align: center;
+  }
+  .controls {
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+    font-size: 13px;
+  }
+  th {
+    background-color: #f0f0f0;
+  }
+  button {
+    margin: 5px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  .data-cell {
+    cursor: pointer;
+  }
+  tfoot td {
+    font-weight: bold;
+    background: #f9f9f9;
+  }
+</style>
+</head>
+<body>
+
+<h1>Gerenciamento de Dados por Data</h1>
+
+<div class="controls">
+  <label for="mes">Selecione o mês:</label>
+  <input type="month" id="mes">
+  <button id="gerar">Gerar Tabela</button>
+  <button id="inserirColuna">➕ Inserir Coluna</button>
+  <button id="inserirColunaMoeda">💰 Inserir Coluna Moeda</button>
+  <button id="excluirColuna">➖ Excluir Coluna</button>
+  <button id="salvarPDF">🧾 Salvar em PDF</button>
+</div>
+
+<table id="tabela">
+  <thead>
+    <tr>
+      <th>Data</th>
+      <th>Dia da Semana</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+  <tfoot>
+    <tr></tr>
+  </tfoot>
+</table>
+
+<script>
+const tabela = document.querySelector("#tabela tbody");
+const tfoot = document.querySelector("#tabela tfoot tr");
+const gerarBtn = document.getElementById("gerar");
+const inputMes = document.getElementById("mes");
+const inserirColunaBtn = document.getElementById("inserirColuna");
+const inserirColunaMoedaBtn = document.getElementById("inserirColunaMoeda");
+const excluirColunaBtn = document.getElementById("excluirColuna");
+const salvarPDFBtn = document.getElementById("salvarPDF");
+const thead = document.querySelector("#tabela thead tr");
+
+// ======= GERA TABELA =======
+function gerarTabela(mes) {
+  tabela.innerHTML = "";
+  const [ano, mesNum] = mes.split("-");
+  const ultimoDia = new Date(ano, mesNum, 0).getDate();
+
+  const numColunasExtras = thead.querySelectorAll("th").length - 2;
+
+  for (let dia = 1; dia <= ultimoDia; dia++) {
+    const data = new Date(ano, mesNum - 1, dia);
+    const diaSemana = data.toLocaleDateString("pt-BR", { weekday: "long" });
+    
+    const tr = document.createElement("tr");
+    let linha = `
+      <td>${data.toLocaleDateString("pt-BR")}</td>
+      <td>${diaSemana}</td>
+    `;
+
+    for (let i = 0; i < numColunasExtras; i++) {
+      const th = thead.querySelectorAll("th")[i + 2];
+      const isMoeda = th.classList.contains("coluna-moeda");
+      linha += `<td class="data-cell ${isMoeda ? 'moeda' : ''}" contenteditable="true"></td>`;
+    }
+
+    tr.innerHTML = linha;
+    tabela.appendChild(tr);
+  }
+
+  atualizarRodape();
+  restaurarDados();
+}
+
+// ======= GERENCIAMENTO DE COLUNAS =======
+inserirColunaBtn.addEventListener("click", () => {
+  const nomeColuna = prompt("Digite o nome da nova coluna:");
+  if (!nomeColuna) return;
+  adicionarColuna(nomeColuna, false);
+});
+
+inserirColunaMoedaBtn.addEventListener("click", () => {
+  const nomeColuna = prompt("Digite o nome da nova coluna de moeda:");
+  if (!nomeColuna) return;
+  adicionarColuna(nomeColuna, true);
+});
+
+function adicionarColuna(nome, isMoeda) {
+  const th = document.createElement("th");
+  th.textContent = nome;
+  if (isMoeda) th.classList.add("coluna-moeda");
+  thead.appendChild(th);
+
+  tabela.querySelectorAll("tr").forEach(tr => {
+    const td = document.createElement("td");
+    td.classList.add("data-cell");
+    if (isMoeda) td.classList.add("moeda");
+    td.contentEditable = "true";
+    tr.appendChild(td);
+  });
+
+  // Rodapé (tfoot)
+  const tdFoot = document.createElement("td");
+  tdFoot.textContent = isMoeda ? "R$ 0,00" : "";
+  tfoot.appendChild(tdFoot);
+
+  salvarEstrutura();
+  salvarDados();
+}
+
+excluirColunaBtn.addEventListener("click", () => {
+  const ths = thead.querySelectorAll("th");
+  if (ths.length <= 2) {
+    alert("Não há colunas adicionais para excluir!");
+    return;
+  }
+
+  const ultimaIndex = ths.length - 1;
+  ths[ultimaIndex].remove();
+  tabela.querySelectorAll("tr").forEach(tr => tr.children[ultimaIndex].remove());
+  tfoot.children[ultimaIndex].remove();
+
+  salvarEstrutura();
+  salvarDados();
+});
+
+// ======= SALVAR / RESTAURAR =======
+function salvarEstrutura() {
+  const colunas = Array.from(thead.querySelectorAll("th"))
+    .slice(2)
+    .map(th => ({ nome: th.textContent, moeda: th.classList.contains("coluna-moeda") }));
+  localStorage.setItem("colunasExtras", JSON.stringify(colunas));
+}
+
+function salvarDados() {
+  const dados = [];
+  tabela.querySelectorAll("tr").forEach(tr => {
+    const linha = Array.from(tr.querySelectorAll(".data-cell")).map(td => td.textContent);
+    dados.push(linha);
+  });
+  localStorage.setItem("dadosTabela", JSON.stringify(dados));
+  localStorage.setItem("mesSelecionado", inputMes.value);
+  atualizarRodape();
+}
+
+function restaurarEstrutura() {
+  const colunas = JSON.parse(localStorage.getItem("colunasExtras")) || [];
+  colunas.forEach(({ nome, moeda }) => adicionarColuna(nome, moeda));
+}
+
+function restaurarDados() {
+  const dados = JSON.parse(localStorage.getItem("dadosTabela")) || [];
+  const linhas = tabela.querySelectorAll("tr");
+  dados.forEach((linha, i) => {
+    if (!linhas[i]) return;
+    const celulas = linhas[i].querySelectorAll(".data-cell");
+    linha.forEach((valor, j) => {
+      if (celulas[j]) celulas[j].textContent = valor;
+    });
+  });
+  atualizarRodape();
+}
+
+function restaurarTudo() {
+  const mes = localStorage.getItem("mesSelecionado");
+  if (mes) {
+    inputMes.value = mes;
+    restaurarEstrutura();
+    gerarTabela(mes);
+  }
+}
+
+// ======= FORMATAR MOEDA =======
+tabela.addEventListener("input", e => {
+  if (e.target.classList.contains("moeda")) {
+    let valor = e.target.textContent.replace(/\D/g, "");
+    if (valor === "") {
+      e.target.textContent = "";
+    } else {
+      valor = (parseFloat(valor) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      e.target.textContent = valor;
+    }
+    salvarDados();
+  } else {
+    salvarDados();
+  }
+});
+
+// ======= ATUALIZA TOTAL =======
+function atualizarRodape() {
+  const colunas = thead.querySelectorAll("th");
+  while (tfoot.children.length < colunas.length) {
+    const td = document.createElement("td");
+    tfoot.appendChild(td);
+  }
+
+  for (let i = 0; i < colunas.length; i++) {
+    const th = colunas[i];
+    const td = tfoot.children[i] || document.createElement("td");
+    if (i < 2) {
+      td.textContent = ""; // não mostra nada nas duas primeiras colunas
+    } else if (th.classList.contains("coluna-moeda")) {
+      let soma = 0;
+      tabela.querySelectorAll("tr").forEach(tr => {
+        const texto = tr.children[i].textContent.replace(/[R$\s.]/g, "").replace(",", ".");
+        const num = parseFloat(texto);
+        if (!isNaN(num)) soma += num;
+      });
+      td.textContent = soma.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    } else {
+      td.textContent = "";
+    }
+    if (!tfoot.children[i]) tfoot.appendChild(td);
+  }
+}
+
+// ======= PDF COM MARGENS AJUSTADAS =======
+salvarPDFBtn.addEventListener("click", async () => {
+  const { jsPDF } = window.jspdf;
+  const tabelaClone = document.getElementById("tabela").cloneNode(true);
+
+  const temp = document.createElement("div");
+  temp.style.position = "fixed";
+  temp.style.left = "-9999px";
+  temp.appendChild(tabelaClone);
+  document.body.appendChild(temp);
+
+  const canvas = await html2canvas(tabelaClone, { scale: 2 });
+  const imgData = canvas.toDataURL("image/png");
+  document.body.removeChild(temp);
+
+  const pdf = new jsPDF("portrait", "pt", "a4");
+  const margemEsq = 40, margemDir = 40, margemTopo = 56, margemBaixo = 56;
+
+  const pageWidth = pdf.internal.pageSize.getWidth() - margemEsq - margemDir;
+  const pageHeight = pdf.internal.pageSize.getHeight() - margemTopo - margemBaixo;
+
+  const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+  const finalWidth = canvas.width * scale;
+  const finalHeight = canvas.height * scale;
+
+  const x = margemEsq + (pageWidth - finalWidth) / 2;
+  const y = margemTopo;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.text("Relatório de Dados por Data", pdf.internal.pageSize.getWidth() / 2, 35, { align: "center" });
+  pdf.addImage(imgData, "PNG", x, y, finalWidth, finalHeight);
+  pdf.save("tabela_dados.pdf");
+});
+
+// ======= EVENTOS =======
+gerarBtn.addEventListener("click", () => {
+  if (!inputMes.value) {
+    alert("Selecione um mês!");
+    return;
+  }
+  gerarTabela(inputMes.value);
+  salvarEstrutura();
+  salvarDados();
+});
+
+restaurarTudo();
+</script>
+
+</body>
+</html>
